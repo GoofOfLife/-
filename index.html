@@ -2839,7 +2839,7 @@ function exportCsv() {
   const d = x => x.toFixed(1).replace('.', ',');
   for (const p of S.passes.slice().reverse()) {
     const dt = new Date(p.wall);
-    rows.push([p.id, dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + timeStr(p.wall), p.lane, p.laneName, p.dir < 0 ? 'к камере' : 'от камеры', d(p.kmh), d(p.kmhMin), d(p.kmhMax), p.limit, ({ bad: 'да', warn: 'в допуске', ok: 'нет' })[tagKind(p.kmh, p.limit)]', d(100 * p.rel), d(p.path), p.n, p.live != null ? Math.round(p.live) : '', p.q]);
+    rows.push([p.id, dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + timeStr(p.wall), p.lane, p.laneName, p.dir < 0 ? 'к камере' : 'от камеры', d(p.kmh), d(p.kmhMin), d(p.kmhMax), p.limit, ({ bad: 'да', warn: 'в допуске', ok: 'нет' })[tagKind(p.kmh, p.limit)], d(100 * p.rel), d(p.path), p.n, p.live != null ? Math.round(p.live) : '', p.q]);
   }
   const csv = '\uFEFF' + rows.map(r => r.map(v => { v = String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(';')).join('\r\n');
   try {
