@@ -46,15 +46,16 @@ select{min-height:44px;border-radius:12px;border:1px solid var(--line);backgroun
 <div id="panel">
 <div class="status" id="st">Загрузка модели…</div>
 <div class="row"><label class="btn" id="pick">Выбрать видео<input type="file" id="file" accept="video/*" hidden></label>
-<button class="btn go" id="run" disabled>Запустить анализ</button></div>
+<button class="btn go" id="run" disabled>Запустить анализ</button>
+<button class="btn small" id="prb" disabled>Проверить кадр</button></div>
 <div id="barw"><i id="bar"></i></div>
 <div class="row"><button class="btn" id="play" disabled>▶ Смотреть</button>
 <button class="btn primary" id="rec" disabled>● Записать и сохранить видео</button>
 <button class="btn small" id="exp" disabled>Скачать события (JSON)</button></div>
 <details class="card"><summary class="ct">Настройки</summary>
 <label class="fl">Частота анализа, кадров/с <select id="fps"><option>2</option><option>3</option><option selected>5</option><option>8</option><option>15</option><option>30</option><option>60</option></select></label>
-<label class="fl">Порог обнаружения людей: <b id="pcv">0.35</b><input type="range" id="pc" min="0.2" max="0.7" step="0.05" value="0.35"></label>
-<label class="fl">Порог предметов (телефон, книга, ноутбук): <b id="phv">0.3</b><input type="range" id="ph" min="0.15" max="0.6" step="0.05" value="0.3"></label>
+<label class="fl">Порог обнаружения людей: <b id="pcv">0.3</b><input type="range" id="pc" min="0.15" max="0.7" step="0.05" value="0.3"></label>
+<label class="fl">Порог предметов (телефон, книга, ноутбук): <b id="phv">0.25</b><input type="range" id="ph" min="0.1" max="0.6" step="0.05" value="0.25"></label>
 <label class="fl">Наклон к соседу, доля ширины (меньше — чувствительнее): <b id="leanv">0.15</b><input type="range" id="lean" min="0.08" max="0.4" step="0.01" value="0.15"></label>
 <label class="fl">Удержание метки, с: <b id="holdv">10</b><input type="range" id="hold" min="3" max="30" step="1" value="10"></label>
 <label class="fl">Затухание баллов, с: <b id="tauv">120</b><input type="range" id="tau" min="30" max="300" step="10" value="120"></label>
@@ -62,6 +63,9 @@ select{min-height:44px;border-radius:12px;border:1px solid var(--line);backgroun
 <label class="fl">Чувствительность поворота головы (меньше — чувствительнее): <b id="yawv">0.3</b><input type="range" id="yaw" min="0.15" max="0.7" step="0.05" value="0.3"></label>
 <label class="grps"><input type="checkbox" id="strict">Строгий режим: повторные взгляды к соседу — красная метка</label>
 <label class="grps"><input type="checkbox" id="gpu" checked>Ускорение видеокартой (WebGPU), если доступно</label>
+<label class="fl">Точность обнаружения <select id="mode"><option value="0">Быстро — весь кадр целиком</option><option value="1" selected>Обычно — плитки, до 1280 px</option><option value="2">Высокая — плитки, до 1920 px (медленно)</option></select></label>
+<label class="fl">Кадров/с при записи видео <select id="rfps"><option selected>30</option><option>60</option></select></label>
+<label class="grps"><input type="checkbox" id="dbg">Показывать скелет (проверка работы модели позы)</label>
 <div class="ct" style="margin-top:8px">Разрешённые предметы (не отмечаются)</div>
 <div class="grps"><label><input type="checkbox" class="al" value="73" checked>Книги и листы</label><label><input type="checkbox" class="al" value="63">Ноутбуки</label><label><input type="checkbox" class="al" value="64,65,76" checked>Прочие мелкие</label><label><input type="checkbox" class="al" value="67">Телефоны</label></div></details>
 <details class="card"><summary class="ct">Группы событий</summary><div class="grps" id="grps"></div>
@@ -172,14 +176,14 @@ S06 y a Repeated sequence of mutual movements
 S07 y x Student attracts neighbour with gesture
 S08 r a Object passed and then studied by receiver`.split('\n').forEach(l=>{const[c,v,u,...d]=l.split(' ');ST[c]=[u,d.join(' ')];
   META[c]||(META[c]=[LV[v],d.join(' '),u=='p'?'Pose keypoints only; head orientation is not eye tracking':'Object detection and person boxes only'])});
-let sess,sessP,cfg,gpu=0,ALW=new Set(),TW=[],MU={},R=[],E=[],T=[],OB=[],PR={},nid=0,busy=0,stop=0,rec=null,fname='video';
-const C=()=>({fps:+$('#fps').value,pc:+$('#pc').value,ph:+$('#ph').value,lean:+$('#lean').value,hold:+$('#hold').value,tau:+$('#tau').value,rep:+$('#rep').value,yaw:+$('#yaw').value,strict:$('#strict').checked});
+let sess,sessP,cfg,wk=[],RUN=null,gpu=0,ALW=new Set(),TW=[],MU={},R=[],E=[],T=[],OB=[],PR={},nid=0,busy=0,stop=0,rec=null,fname='video';
+const C=()=>({fps:+$('#fps').value,pc:+$('#pc').value,ph:+$('#ph').value,lean:+$('#lean').value,hold:+$('#hold').value,tau:+$('#tau').value,rep:+$('#rep').value,yaw:+$('#yaw').value,strict:$('#strict').checked,dbg:$('#dbg').checked});
 const st=(m,c='')=>{const e=$('#st');e.textContent=m;e.className='status '+c};
 const fm=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 const dl=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2e4)};
 const base=()=>fname.replace(/\.[^.]+$/,'');
 /* ---------- detection ---------- */
-const off=document.createElement('canvas');off.width=off.height=640;const oc=off.getContext('2d',{willReadFrequently:true});
+const off=document.createElement('canvas');off.width=off.height=640;const oc=off.getContext('2d',{willReadFrequently:true});oc.imageSmoothingQuality='high';
 const iou=(a,b)=>{const x=Math.max(a[0],b[0]),y=Math.max(a[1],b[1]),X=Math.min(a[0]+a[2],b[0]+b[2]),Y=Math.min(a[1]+a[3],b[1]+b[3]),i=Math.max(0,X-x)*Math.max(0,Y-y);return i/(a[2]*a[3]+b[2]*b[3]-i||1)};
 function nms(L){L.sort((a,b)=>b.p-a.p);const k=[];for(const d of L)if(!k.some(q=>q.c==d.c&&iou(q.b,d.b)>.5))k.push(d);return k}
 function decode(a,n,s,dx,dy){const out=[];
@@ -188,22 +192,38 @@ function decode(a,n,s,dx,dy){const out=[];
     if(best<0)continue;const w=a[2*n+i],h=a[3*n+i];
     out.push({c:best,p:bs,b:[(a[i]-w/2-dx)/s,(a[n+i]-h/2-dy)/s,w/s,h/s]})}
   return nms(out)}
-async function detect(nx){
-  const w=V.videoWidth,h=V.videoHeight,s=Math.min(640/w,640/h),nw=Math.round(w*s),nh=Math.round(h*s),dx=(640-nw)>>1,dy=(640-nh)>>1;
-  oc.fillStyle='#727272';oc.fillRect(0,0,640,640);oc.drawImage(V,dx,dy,nw,nh);
-  const d=oc.getImageData(0,0,640,640).data,N=409600,f=new Float32Array(3*N);
-  for(let i=0,j=0;i<N;i++,j+=4){f[i]=d[j]/255;f[N+i]=d[j+1]/255;f[2*N+i]=d[j+2]/255}
-  nx&&nx();
-  const R2=async pz=>{const go=()=>{const m=pz?sessP:sess;return m.run({[m.inputNames[0]]:new ort.Tensor('float32',f,[1,3,640,640])}).then(r=>r[m.outputNames[0]])};
-    try{return await go()}catch(e){if(!gpu)throw e;gpu=0;await initM(['wasm']);return go()}};
-  let o=await R2(0),D=decode(o.data,o.dims[2],s,dx,dy);
-  if(sessP){o=await R2(1);D=D.filter(d=>d.c).concat(decodeP(o.data,o.dims[2],s,dx,dy))}
-  return D.filter(d=>!ALW.has(d.c))}
+const SKL=[[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],[11,12],[0,1],[0,2],[1,3],[2,4]];
+const inter=(a,b)=>Math.max(0,Math.min(a[0]+a[2],b[0]+b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1]));
 function decodeP(a,n,s,dx,dy){const out=[];
   for(let i=0;i<n;i++){const p=a[4*n+i];if(p<cfg.pc)continue;const w=a[2*n+i],h=a[3*n+i],kp=[];
     for(let j=0;j<17;j++)kp.push([(a[(5+3*j)*n+i]-dx)/s,(a[(6+3*j)*n+i]-dy)/s,a[(7+3*j)*n+i]]);
     out.push({c:0,p,b:[(a[i]-w/2-dx)/s,(a[n+i]-h/2-dy)/s,w/s,h/s],kp})}
   return nms(out)}
+/* big frames are cut into overlapping square windows (tiles) so small objects keep their pixels */
+function tiles(bw,bh,mode){if(!mode||Math.max(bw,bh)<=760)return[{x:0,y:0,w:bw,h:bh}];
+  let rows=Math.ceil(bh/760);const ws=Math.min(bw,Math.ceil(bh/(rows-.2*(rows-1))));
+  rows=Math.max(1,Math.ceil((bh/ws-.2)/.8));const cols=Math.max(1,Math.ceil((bw/ws-.2)/.8)),T=[];
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)T.push({x:cols>1?Math.round(c*(bw-ws)/(cols-1)):0,y:rows>1?Math.round(r*(bh-ws)/(rows-1)):0,w:ws,h:Math.min(ws,bh)});
+  return T}
+function place(d,w,bw,bh){d.b[0]+=w.x;d.b[1]+=w.y;if(d.kp)for(const q of d.kp){q[0]+=w.x;q[1]+=w.y}
+  d.cut=!d.c&&((w.x>0&&d.b[0]<w.x+4)||(w.x+w.w<bw&&d.b[0]+d.b[2]>w.x+w.w-4)||(w.y>0&&d.b[1]<w.y+4)||(w.y+w.h<bh&&d.b[1]+d.b[3]>w.y+w.h-4))}
+function merge(L){const F=nms(L.filter(d=>!d.cut)),C=L.filter(d=>d.cut&&!F.some(q=>q.c==d.c&&inter(q.b,d.b)/Math.min(q.b[2]*q.b[3],d.b[2]*d.b[3])>.4));return nms(F.concat(C))}
+function prep(src,w,x){const s=Math.min(640/w.w,640/w.h),nw=Math.round(w.w*s),nh=Math.round(w.h*s),dx=(640-nw)>>1,dy=(640-nh)>>1;
+  x.fillStyle='#727272';x.fillRect(0,0,640,640);x.drawImage(src,w.x,w.y,w.w,w.h,dx,dy,nw,nh);
+  const d=x.getImageData(0,0,640,640).data,N=409600,f=new Float32Array(3*N);
+  for(let i=0,j=0;i<N;i++,j+=4){f[i]=d[j]/255;f[N+i]=d[j+1]/255;f[2*N+i]=d[j+2]/255}
+  return{f,s,dx,dy}}
+async function detectFrame(src,bw,bh,m,run,x){const A=[],Q=[];
+  for(const w of tiles(bw,bh,m.mode)){const r=prep(src,w,x),tin=new ort.Tensor('float32',r.f,[1,3,640,640]);
+    let o=await run(0,tin);const D=decode(o.data,o.dims[2],r.s,r.dx,r.dy);
+    if(m.pose){o=await run(1,tin);for(const d of decodeP(o.data,o.dims[2],r.s,r.dx,r.dy)){place(d,w,bw,bh);Q.push(d)}}
+    for(const d of D){place(d,w,bw,bh);A.push(d)}}
+  const pp=merge(Q),ob=merge(A.filter(d=>d.c)),dp=merge(A.filter(d=>!d.c)).filter(d=>!pp.some(q=>iou(q.b,d.b)>.4));
+  return pp.concat(dp,ob).filter(d=>!m.allow.includes(d.c))}
+/* main-thread fallback (only if background workers cannot start) */
+const runMain=async(role,tin)=>{const go=()=>{const m=role?sessP:sess;return m.run({[m.inputNames[0]]:tin}).then(r=>r[m.outputNames[0]])};
+  try{return await go()}catch(e){if(!gpu)throw e;gpu=0;await initM(['wasm']);return go()}};
+const detectMain=()=>detectFrame(V,V.videoWidth,V.videoHeight,{mode:0,pose:!!sessP,allow:[...ALW]},runMain,oc);
 /* ---------- tracking ---------- */
 function track(P,t){const M=[];
   T.forEach((k,i)=>P.forEach((d,j)=>{const a=k.b,b=d.b,q=iou(a,b),r=Math.hypot(a[0]+a[2]/2-b[0]-b[2]/2,a[1]+a[3]/2-b[1]-b[3]/2)/Math.max(a[2],a[3]);if(q>.15||r<.5)M.push([q+Math.max(0,.5-r),i,j])}));
@@ -239,7 +259,7 @@ function step(D,t,dt){
     if(!k){let bd=1e9;for(const q of K){const d=Math.hypot(q.b[0]+q.b[2]/2-ox,q.b[1]+q.b[3]/2-oy);if(d<bd&&d<.8*Math.max(q.b[2],q.b[3])){bd=d;k=q}}}
     if(!k)continue;
     k.sn=k.sn||{};k.sn[o.c]=(k.sn[o.c]||[]).filter(s=>t-s<3);k.sn[o.c].push(t);(k.ob=k.ob||[]).push(o);
-    const sa=k.sn[o.c],rep=sa.length>=Math.max(2,cfg.fps*.3|0)&&sa[sa.length-1]-sa[0]>=.5,nm=CLS[o.c];
+    const sa=k.sn[o.c],rep=sa.length>=Math.max(2,cfg.fps*.3|0)&&sa[sa.length-1]-sa[0]>=.499,nm=CLS[o.c];
     if(o.c==67){if(rep){E=E.filter(e=>!(e.student_id==k.id&&e.event_type=='P11'&&t-e.end_time<4));touch(k,'P01',t,o.p,nm)}else if(sa[sa.length-1]-sa[0]>=.15)touch(k,'P11',t,o.p,nm)}
     else if(rep)touch(k,o.c==73?'D07':o.c==63?'D06':'D08',t,o.p,nm);
     if(o.c==67||o.c==73){const rad=Math.max(4*Math.max(w,h),.6*k.b[2]);
@@ -248,13 +268,13 @@ function step(D,t,dt){
       else{m.x=ox;m.y=oy;m.t=t;
         if(m.o==k.id){m.cand=0;m.cn=0}
         else{if(m.cand==k.id)m.cn++;else{m.cand=k.id;m.cn=1;m.ct=t}
-          if(m.cn>=2&&t-m.ct>=.4){const a=m.o;m.o=k.id;m.cn=0;xfer(a,k,t,o,K)}}}}};extra(K,t,dt)}
+          if(m.cn>=2&&t-m.ct>=.399){const a=m.o;m.o=k.id;m.cn=0;xfer(a,k,t,o,K)}}}}};extra(K,t,dt)}
 /* ---------- rule engine: catalog events from person boxes, objects and (optional) pose ---------- */
 const wt=c=>W[c]??({green:0,yellow:6,red:30})[META[c][0]];
 const D2=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),sg=Math.sign,TOW=/^(G0[237]|G10|C0[1346]|C08|B07)$/;
 function ep(k,key,on,t,win){const s=k.s[key]||(k.s[key]={on:0,t0:0,l:0,c:0,e:[]});let st=0;
-  if(on){if(!s.on){s.on=1;s.t0=t;s.c=0}s.l=t;if(!s.c&&t-s.t0>=.25){s.c=1;s.e.push(s.t0);st=1}}
-  else if(s.on&&t-s.l>=.5)s.on=0;   /* dips shorter than 0.5 s do not end an episode; episodes shorter than 0.25 s are ignored */
+  if(on){if(!s.on){s.on=1;s.t0=t;s.c=0}s.l=t;if(!s.c&&t-s.t0>=.249){s.c=1;s.e.push(s.t0);st=1}}
+  else if(s.on&&t-s.l>=.499)s.on=0;   /* dips shorter than 0.5 s do not end an episode; episodes shorter than 0.25 s are ignored */
   s.e=s.e.filter(x=>t-x<win||(s.on&&x==s.t0));return{h:s.on?t-s.t0:0,n:s.e.length,st}}
 function feat(k,K,t,dt){
   const[x,y,w,h]=k.b,c=x+w/2,cy=y+h/2,kp=k.kp,a=1-Math.exp(-dt/20),f={},mid=q=>q.b[0]+q.b[2]/2;
@@ -268,10 +288,10 @@ function feat(k,K,t,dt){
   f.tc=T.some(q=>q.mob&&q.vis&&D2([mid(q),q.b[1]+q.b[3]/2],[c,cy])<4*w);
   if(!k.ptT||t-k.ptT>.5||t<k.ptT){k.ptT=t;k.ptv=E.some(e=>e.student_id==k.id&&e.event_type=='P07'&&t-e.end_time<15)}f.ptc=k.ptv;
   f.pose=!!kp;if(!kp)return f;
-  const v=i=>kp[i][2]>.3,P=i=>kp[i],M=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2];
+  const v=i=>kp[i][2]>.2,P=i=>kp[i],M=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2];
   const sm=v(5)&&v(6)?M(P(5),P(6)):null,sw=sm?D2(P(5),P(6)):w*.5,ed=v(1)&&v(2)?D2(P(1),P(2)):0;
   const ey=ed?M(P(1),P(2)):v(3)&&v(4)?M(P(3),P(4)):null,nz=v(0)?P(0):null;
-  if(ey&&nz){const yw=Math.max(-2,Math.min(2,(nz[0]-ey[0])/Math.max(ed,sw*.25))),ys=sg(yw);
+  if(ey&&nz){const y0=Math.max(-2,Math.min(2,(nz[0]-ey[0])/Math.max(ed,sw*.25))),al=1-Math.exp(-dt/.2);k.ys=k.ys==null?y0:k.ys+al*(y0-k.ys);const yw=k.ys,ys=sg(yw);
     f.ya=Math.abs(yw);f.yw=nb[ys]?f.ya:0;f.nbd=!!nb[ys];f.dy=Math.abs(yw-(k.py||0));k.py=yw;if(f.yw>cfg.yaw)f.nbt=nb[ys].id}
   if(ey&&sm){const pr=(sm[1]-ey[1])/sw,hs=(ey[0]-sm[0])/sw,hb=nb[sg(ey[0]-c)];
     k.bp=k.bp?k.bp+a*(pr-k.bp):pr;f.pd=Math.max(f.pd,k.bp-pr);f.hd=nb[sg(hs)]?Math.abs(hs):0;f.hb=hb?Math.abs(ey[0]-c)/Math.abs(mid(hb)-c):0}
@@ -297,7 +317,7 @@ function objEv(k,f,t){if(f.lo)k.lowT=t;if(f.pd>.5)k.downT=t;
   for(const c of[67,73]){const O=k.ob.filter(o=>o.c==c),ls=k['s'+c],nm=CLS[c];
     if(O.length){const o=O[0],oc=[o.b[0]+o.b[2]/2,o.b[1]+o.b[3]/2],low=oc[1]>k.b[1]+.65*k.b[3];
       if(ls==null||t-ls>1.4){k['f'+c]=t;k['d'+c]=0}
-      if(!k['d'+c]&&t-k['f'+c]>=.3&&(k['x'+c]==null||t-k['x'+c]>2.5)){k['d'+c]=1;k['x'+c]=t;
+      if(!k['d'+c]&&t-k['f'+c]>=.299&&(k['x'+c]==null||t-k['x'+c]>2.5)){k['d'+c]=1;k['x'+c]=t;
         if(c==67&&low)touch(k,'P04',t,o.p,nm);
         if(c==67&&k.lowT&&t-k.lowT<2.5)touch(k,'P02',t,o.p,nm);
         if(k.downT&&t-k.downT<4)touch(k,c==67?'P03':'B08',t,o.p,nm)}
@@ -311,9 +331,9 @@ function extra(K,t,dt){TW=TW.filter(z=>t-z.t<10);
   for(const k of K){if(k.mob)continue;k.s=k.s||{};k.ob=k.ob||[];const f=feat(k,K,t,dt);
     for(const[code,np,cond,hold,n,win]of RL){if(np&&!f.pose)continue;
       const on=!!cond(f),e=ep(k,code,on,t,win);
-      if(on&&e.h>=hold&&e.n>=(n=='R'?cfg.rep:n=='R+'?cfg.rep+1:n))touch(k,code,t,Math.min(.95,k.p*.85),'',TOW.test(code)&&f.nbt?'toward student '+f.nbt:'',cfg.strict&&/^(G02|C06|C08|B07)$/.test(code)?'red':0)}
+      if(on&&e.h>=hold-.001&&e.n>=(n=='R'?cfg.rep:n=='R+'?cfg.rep+1:n))touch(k,code,t,Math.min(.95,k.p*.85),'',TOW.test(code)&&f.nbt?'toward student '+f.nbt:'',cfg.strict&&/^(G02|C06|C08|B07)$/.test(code)?'red':0)}
     objEv(k,f,t);
-    if(k.rx&&t-k.rx>=3){if(t-k.rx<5&&k.ob.length&&f.pd>.2)touch(k,'S08',t,.6,'','after transfer','red');k.rx=0}
+    if(k.rx&&t-k.rx>=2.999){if(t-k.rx<5&&k.ob.length&&f.pd>.2)touch(k,'S08',t,.6,'','after transfer','red');k.rx=0}
     const tw=ep(k,'tw',!!f.nbt,t,120);
     if(tw.st&&f.nbt){TW.push({a:k.id,b:f.nbt,t});
       if(TW.some(z=>z.a==f.nbt&&z.b==k.id&&t-z.t<3)){const key=[k.id,f.nbt].sort((x,y)=>x-y).join('&');
@@ -326,7 +346,7 @@ const sc=(k,t)=>Math.min(100,Math.round(E.reduce((s,e)=>s+(e.student_id==k.id&&e
 const act=(k,t)=>E.filter(e=>e.student_id==k.id&&e.start_time<=t&&t-e.end_time<=cfg.hold&&e.level!='green').sort((a,b)=>RK[b.level]-RK[a.level]||b.end_time-a.end_time);
 function snap(t,D){return{t,it:T.filter(k=>k.id&&!k.mob).map(k=>{let c=k.cs;if(!c||t-c.t>=.2||t<c.t||c.n!=E.length)c=k.cs={t,n:E.length,s:sc(k,t),A:act(k,t)};const s=c.s,A=c.A;
   const l=(!k.vis&&t-k.seen>2)?'no_data':A.some(e=>e.level=='red')?'red':(s>=30||A.length)?'yellow':'green';
-  return{id:k.id,b:k.b.slice(),l,s,pt:k.kp?[0,9,10].filter(i=>k.kp[i][2]>.3).map(i=>k.kp[i].slice(0,2)):[],x:l=='no_data'?'Student not visible':A[0]?A[0].event_type+' '+A[0].description:''}}),
+  return{id:k.id,b:k.b.slice(),l,s,pt:k.kp?[0,9,10].filter(i=>k.kp[i][2]>.3).map(i=>k.kp[i].slice(0,2)):[],sk:cfg.dbg&&k.kp?k.kp.map(p=>p[2]>.3?[p[0],p[1]]:null):0,x:l=='no_data'?'Student not visible':A[0]?A[0].event_type+' '+A[0].description:''}}),
   ob:D.filter(d=>d.c).map(d=>({b:d.b,n:CLS[d.c],p:d.p}))}}
 /* ---------- drawing ---------- */
 function lab(x,y,a,b,c,u){const F=(w,s)=>g.font=`${w} ${s*u}px system-ui,sans-serif`;
@@ -337,25 +357,59 @@ function draw(f){g.drawImage(V,0,0,cv.width,cv.height);if(!f)return;
   const u=Math.max(1,cv.width/900);
   for(const o of f.ob){g.strokeStyle=g.fillStyle='#4aa3ff';g.lineWidth=2*u;g.strokeRect(...o.b);g.font=`${11*u}px system-ui,sans-serif`;g.fillText(o.n+' '+o.p.toFixed(2),o.b[0],o.b[1]-3*u)}
   for(const i of f.it){const c=COL[i.l];g.strokeStyle=c;g.lineWidth=2.5*u;g.setLineDash(i.l=='no_data'?[8*u,6*u]:[]);g.strokeRect(...i.b);g.setLineDash([]);g.fillStyle=c;for(const p of i.pt||[]){g.beginPath();g.arc(p[0],p[1],3.5*u,0,6.3);g.fill()}
-    lab(i.b[0],i.b[1],`ID ${i.id} · ${i.l.replace('_',' ').toUpperCase()} · ${i.s}`,i.x,c,u)}}
+    if(i.sk){g.strokeStyle=c;g.lineWidth=1.5*u;g.beginPath();for(const[a,b]of SKL){const p=i.sk[a],q=i.sk[b];if(p&&q){g.moveTo(p[0],p[1]);g.lineTo(q[0],q[1])}}g.stroke()}
+    lab(i.b[0],i.b[1],i.t||`ID ${i.id} · ${i.l.replace('_',' ').toUpperCase()} · ${i.s}`,i.x,c,u)}}
 function at(t){let lo=0,hi=R.length-1,i=-1;while(lo<=hi){const m=(lo+hi)>>1;if(R[m].t<=t){i=m;lo=m+1}else hi=m-1}
   const a=R[i],b=R[i+1];if(!a||t-a.t>1.5)return null;if(!b||b.t-a.t>1)return a;const u=(t-a.t)/(b.t-a.t),L=(p,q)=>p+(q-p)*u;
   return{...a,it:a.it.map(q=>{const p=b.it.find(z=>z.id==q.id);return!p||p.l=='no_data'||q.l=='no_data'?q:{...q,b:q.b.map((v,j)=>L(v,p.b[j])),pt:q.pt.length==p.pt.length?q.pt.map((v,j)=>[L(v[0],p.pt[j][0]),L(v[1],p.pt[j][1])]):q.pt}})}}
-(function loop(){if(!busy&&V.readyState>1)draw(at(V.currentTime));requestAnimationFrame(loop)})();
+let lt=-1,pf=null;(function loop(){if(!busy&&V.readyState>1&&(!V.paused||V.currentTime!==lt||rec)){draw(pf&&pf.t===V.currentTime?pf:at(V.currentTime));lt=V.currentTime}requestAnimationFrame(loop)})();
 /* ---------- analysis ---------- */
 const seek=t=>new Promise(r=>{if(Math.abs(V.currentTime-t)<.001)return r();const f=()=>{V.removeEventListener('seeked',f);r()};V.addEventListener('seeked',f);V.currentTime=t});
 async function run(){
   if(busy){stop=1;return}
-  cfg=C();document.querySelectorAll('.gk').forEach(i=>GRP[i.value]=i.checked);ALW=new Set();document.querySelectorAll('.al').forEach(i=>{if(i.checked)i.value.split(',').forEach(c=>ALW.add(+c))});busy=1;stop=0;V.pause();R=[];E=[];T=[];OB=[];PR={};TW=[];MU={};nid=0;setB();
-  const dt=1/cfg.fps,dur=V.duration;
-  const NN=Math.floor((dur-.05)/dt),tt=n=>Math.min(dur-.01,n*dt+.5/Math.max(cfg.fps,30)),t0=performance.now();let nx=seek(tt(0)),last=0;
-  try{for(let n=0;n<=NN&&!stop;n++){const t=+(n*dt).toFixed(3);
-      await nx;const D=await detect(()=>{nx=n<NN?seek(tt(n+1)):0});step(D,t,dt);R.push(snap(t,D));draw(R[R.length-1]);
-      const now=performance.now();if(now-last>300){last=now;const sp=(n+1)/((now-t0)/1e3);
-        $('#bar').style.width=100*t/dur+'%';st(`Анализ: ${fm(t)} / ${fm(dur)} · ${sp.toFixed(1)} кадр/с · осталось ~${fm((NN-n)/sp)} · учеников: ${nid} · событий: ${E.length}`)}}
-    st(stop?'Анализ остановлен. Результат сохранён до этого места.':'Анализ завершён. Можно смотреть видео и записывать его с разметкой.','ok')}
-  catch(e){st('Ошибка анализа: '+e.message,'bad')}
-  busy=0;stop=0;$('#bar').style.width='100%';await seek(0);setB();show()}
+  cfg=C();document.querySelectorAll('.gk').forEach(i=>GRP[i.value]=i.checked);ALW=new Set();document.querySelectorAll('.al').forEach(i=>{if(i.checked)i.value.split(',').forEach(c=>ALW.add(+c))});
+  busy=1;stop=0;V.pause();R=[];E=[];T=[];OB=[];PR={};TW=[];MU={};nid=0;setB();
+  const dt=1/cfg.fps,dur=V.duration,NN=Math.floor((dur-.05)/dt),tt=n=>Math.min(dur-.01,n*dt+.5/Math.max(cfg.fps,30)),t0=performance.now();
+  const mode=+$('#mode').value,vw=V.videoWidth,vh=V.videoHeight,bw=Math.min(vw,[960,1280,1920][mode]),bh=Math.round(bw*vh/vw),sck=cv.width/bw;
+  const wc=document.createElement('canvas');wc.width=bw;wc.height=bh;const wx=wc.getContext('2d');wx.imageSmoothingQuality='high';
+  const wcfg={cfg:{pc:cfg.pc,ph:cfg.ph},mode,allow:[...ALW]};
+  const Pm={},pend={},waiters=[];let free=2*Math.max(1,wk.length),last=0,errs='';
+  const gp=n=>Pm[n]||(Pm[n]=new Promise(r=>pend[n]=r));
+  const slot=()=>free>0?(free--,Promise.resolve()):new Promise(r=>waiters.push(r));
+  const rel=()=>{const r=waiters.shift();r?r():free++};
+  const scaleD=D=>{if(sck!=1)for(const d of D){d.b=d.b.map(v=>v*sck);if(d.kp)d.kp=d.kp.map(q=>[q[0]*sck,q[1]*sck,q[2]])}return D};
+  RUN=(w,m)=>{w.q--;rel();if(m.t=='fail')errs=m.msg;gp(m.id);pend[m.id](m.t=='res'?m.D:[])};
+  const prod=async()=>{let n=0;
+    try{for(;n<=NN&&!stop;n++){
+        if(wk.length){await slot();if(stop)break;await seek(tt(n));wx.drawImage(V,0,0,bw,bh);
+          const bmp=await createImageBitmap(wc),w=wk.reduce((a,b)=>a.q<=b.q?a:b);w.q++;gp(n);w.postMessage({t:'frame',id:n,bmp,...wcfg,pose:!!w.info.pose},[bmp])}
+        else{await seek(tt(n));const D=await detectMain();gp(n);pend[n](D)}}}
+    catch(e){errs=e.message;stop=1}
+    gp(n);pend[n](null)};
+  const cons=(async()=>{for(let n=0;n<=NN;n++){const D=await gp(n);if(!D)break;delete Pm[n];const t=+(n*dt).toFixed(3);
+      step(scaleD(D),t,dt);R.push(snap(t,D));
+      const now=performance.now();if(now-last>250){last=now;draw(R[R.length-1]);const sp=(n+1)/((now-t0)/1e3);
+        $('#bar').style.width=100*t/dur+'%';st(`Анализ: ${fm(t)} / ${fm(dur)} · ${sp.toFixed(1)} кадр/с · осталось ~${fm((NN-n)/sp)} · учеников: ${nid} · событий: ${E.length}`)}}})();
+  try{await Promise.all([prod(),cons])}catch(e){errs=e.message;stop=1}
+  RUN=null;busy=0;$('#bar').style.width='100%';
+  st(!R.length?'Ошибка анализа: '+(errs||'нет кадров'):(stop?'Анализ остановлен.':'Анализ завершён. Можно смотреть видео и записывать его с разметкой.')+(errs?' Ошибка модели: '+errs:''),R.length&&!errs?'ok':'bad');
+  stop=0;await seek(0);setB();show()}
+async function probe(){if(busy||rec||!V.src)return;busy=1;setB();st('Проверка текущего кадра…');
+  try{cfg=C();ALW=new Set();document.querySelectorAll('.al').forEach(i=>{if(i.checked)i.value.split(',').forEach(c=>ALW.add(+c))});
+    const mode=+$('#mode').value,vw=V.videoWidth,vh=V.videoHeight,bw=Math.min(vw,[960,1280,1920][mode]),bh=Math.round(bw*vh/vw),sck=cv.width/bw;
+    const wc=document.createElement('canvas');wc.width=bw;wc.height=bh;const wx=wc.getContext('2d');wx.imageSmoothingQuality='high';wx.drawImage(V,0,0,bw,bh);
+    const t0=performance.now();let D;
+    if(wk.length){const bmp=await createImageBitmap(wc),w=wk[0];
+      D=await new Promise(res=>{RUN=(x,m)=>{x.q--;res(m.t=='res'?m.D:m.msg)};w.q++;w.postMessage({t:'frame',id:-1,bmp,cfg:{pc:cfg.pc,ph:cfg.ph},mode,allow:[...ALW],pose:!!w.info.pose},[bmp])});RUN=null}
+    else D=await detectMain();
+    if(!Array.isArray(D))throw new Error(D);
+    for(const d of D){d.b=d.b.map(v=>v*sck);if(d.kp)d.kp=d.kp.map(q=>[q[0]*sck,q[1]*sck,q[2]])}
+    const P=D.filter(d=>!d.c),O=D.filter(d=>d.c);
+    pf={t:V.currentTime,ob:O.map(d=>({b:d.b,n:CLS[d.c],p:d.p})),it:P.map((d,i)=>({id:i+1,t:`person ${d.p.toFixed(2)}${d.kp?' +pose':''}`,b:d.b,l:'green',s:0,x:'',pt:[],sk:d.kp?d.kp.map(q=>q[2]>.2?[q[0],q[1]]:null):0}))};
+    st(`Кадр ${fm(V.currentTime)}: людей ${P.length} (с позой ${P.filter(d=>d.kp).length}), телефонов ${O.filter(d=>d.c==67).length}, книг ${O.filter(d=>d.c==73).length}, ноутбуков ${O.filter(d=>d.c==63).length} · ${Math.round(performance.now()-t0)} мс. Людей меньше, чем в классе? Снизьте порог людей или выберите точность «Обычно/Высокая».`,P.length?'ok':'warn')}
+  catch(e){st('Ошибка проверки кадра: '+e.message,'bad')}
+  busy=0;setB()}
+$('#prb').onclick=probe;
 function show(){const S={};
   for(const f of R)for(const i of f.it){const s=S[i.id]||(S[i.id]={l:'green',m:0});if(RK[i.l]>RK[s.l])s.l=i.l;s.m=Math.max(s.m,i.s)}
   $('#stu').innerHTML=Object.keys(S).map(id=>`<span class="chip" style="border-color:${COL[S[id].l]}"><i style="background:${COL[S[id].l]}"></i>ID ${id} · ${S[id].l} · peak ${S[id].m}</span>`).join('')||'—';
@@ -365,10 +419,10 @@ $('#ev').onclick=e=>{const b=e.target.closest('.evr');if(b&&!busy){V.pause();V.c
 const fin=()=>{if(rec&&rec.state!='inactive')rec.stop();V.pause()};
 async function record(){
   if(rec)return fin();if(!R.length||busy)return;
-  const mt=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
+  const mt=['video/mp4;codecs=avc1','video/webm;codecs=h264','video/webm;codecs=vp8','video/webm','video/mp4'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
   if(!mt)return st('Этот браузер не поддерживает запись видео. Используйте Chrome, Edge или Firefox.','bad');
   const ch=[];V.pause();await seek(0);
-  rec=new MediaRecorder(cv.captureStream(60),{mimeType:mt,videoBitsPerSecond:Math.min(2e7,Math.max(6e6,cv.width*cv.height*6))});
+  rec=new MediaRecorder(cv.captureStream(+$('#rfps').value),{mimeType:mt,videoBitsPerSecond:Math.min(1.2e7,Math.max(3e6,cv.width*cv.height*(+$('#rfps').value>30?7:5)))});
   rec.ondataavailable=e=>e.data.size&&ch.push(e.data);
   rec.onstop=()=>{dl(new Blob(ch,{type:mt}),base()+'_analyzed.'+(mt.includes('mp4')?'mp4':'webm'));rec=null;setB();st('Видео с разметкой сохранено (папка загрузок).','ok')};
   V.addEventListener('ended',fin,{once:true});rec.start(500);V.muted=true;V.play();setB();
@@ -378,8 +432,8 @@ $('#exp').onclick=()=>{const L=R[R.length-1];
     students:L?L.it.map(i=>({student_id:i.id,seat_zone:i.b.map(Math.round),visibility_status:i.l=='no_data'?'not_visible':'visible',overall_level:i.l,score:i.s})):[],
     events:E.map(e=>({...e,clip_reference:`${fname}#t=${Math.max(0,e.start_time-2).toFixed(1)},${(e.end_time+2).toFixed(1)}`}))},null,2)],{type:'application/json'}),base()+'_events.json')};
 /* ---------- UI wiring ---------- */
-function setB(){const ok=!!V.src&&!!sess,has=R.length>0&&!busy;
-  $('#run').disabled=!ok||!!rec;$('#run').textContent=busy?'■ Остановить анализ':'Запустить анализ';
+function setB(){lt=-1;const ok=!!V.src&&(wk.length>0||!!sess),has=R.length>0&&!busy;
+  $('#run').disabled=!ok||!!rec;$('#prb').disabled=!ok||!!busy||!!rec;$('#run').textContent=busy?'■ Остановить анализ':'Запустить анализ';
   $('#play').disabled=!V.src||busy||!!rec;$('#play').textContent=V.paused?'▶ Смотреть':'⏸ Пауза';
   $('#rec').disabled=!has&&!rec;$('#rec').textContent=rec?'■ Остановить и сохранить':'● Записать и сохранить видео';$('#exp').disabled=!has}
 $('#run').onclick=run;$('#rec').onclick=record;$('#play').onclick=()=>{V.paused?V.play():V.pause()};
@@ -391,19 +445,44 @@ $('#catT').textContent=`Каталог событий: реализовано ${
 $('#grn').onchange=show;
 $('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;fname=f.name;R=[];E=[];T=[];show();
   if(V.src)URL.revokeObjectURL(V.src);V.src=URL.createObjectURL(f);$('#empty').hidden=1;st('Загрузка видео…');setB()};
-V.onloadeddata=()=>{cv.width=V.videoWidth;cv.height=V.videoHeight;st('Видео загружено. Нажмите «Запустить анализ».','ok');setB()};
+V.onloadeddata=()=>{cv.width=Math.min(V.videoWidth,1280);cv.height=Math.round(cv.width*V.videoHeight/V.videoWidth);st('Видео загружено. Нажмите «Запустить анализ».','ok');setB()};
 V.onerror=()=>st('Не удалось открыть видео: формат не поддерживается браузером.','bad');
 const OR='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
 const jsLoad=u=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=u;e.onload=ok;e.onerror=()=>no(new Error('не загрузился '+u));document.head.appendChild(e)});
-async function loadOrt(){try{await jsLoad(OR+'ort.webgpu.min.js')}catch(_){await jsLoad(OR+'ort.min.js')}
-  ort.env.wasm.wasmPaths=OR;ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1}
+async function loadOrt(){try{await jsLoad(OR+'ort.webgpu.min.js')}catch(_){await jsLoad(OR+'ort.min.js')}ort.env.wasm.wasmPaths=OR;ort.env.wasm.numThreads=1}
 const eps=()=>$('#gpu').checked&&navigator.gpu?['webgpu','wasm']:['wasm'];
 async function initM(e){gpu=e[0]=='webgpu'?1:0;sess=await ort.InferenceSession.create('models/yolov8n.onnx',{executionProviders:e});
   try{sessP=await ort.InferenceSession.create('models/yolov8n-pose.onnx',{executionProviders:e})}catch(_){sessP=null}}
-$('#gpu').onchange=async()=>{if(!sess)return;st('Перезагрузка модели…');try{await initM(eps());st(gpu?'Включено ускорение видеокартой (WebGPU).':'Работает на процессоре.','ok')}catch(e){st('Ошибка модели: '+e.message,'bad')}};
-(async()=>{try{await loadOrt();
-  await initM(eps());
-  st('Модель yolov8n загружена ('+(gpu?'видеокарта, WebGPU':'процессор')+')'+(sessP?' + поза (yolov8n-pose): включены события головы и рук':'. Модели позы нет — события головы и рук отключены')+'. Выберите видео.','ok')}
- catch(e){st('Не удалось загрузить models/yolov8n.onnx ('+e.message+'). Откройте страницу через GitHub Pages или локальный сервер, а не как файл.','bad')}
- setB()})();
+/* inference runs in background workers: the page never freezes and several frames are processed in parallel */
+function WK(){let S,P,G=0,U,g;
+  const init=async eps=>{ort.env.wasm.numThreads=1;G=eps[0]=='webgpu'?1:0;
+    S=await ort.InferenceSession.create(U.det,{executionProviders:eps});
+    try{P=await ort.InferenceSession.create(U.pose,{executionProviders:eps})}catch(_){P=null}};
+  const run=async(role,tin)=>{const go=()=>{const s=role?P:S;return s.run({[s.inputNames[0]]:tin}).then(r=>r[s.outputNames[0]])};
+    try{return await go()}catch(e){if(!G)throw e;await init(['wasm']);return go()}};
+  onmessage=async e=>{const m=e.data;
+    if(m.t=='init'){U=m;try{const gw=m.eps[0]=='webgpu';try{importScripts(gw?m.ort:m.ort2)}catch(_){importScripts(gw?m.ort2:m.ort)}
+        ort.env.wasm.wasmPaths=m.wp;g=new OffscreenCanvas(640,640).getContext('2d',{willReadFrequently:true});g.imageSmoothingQuality='high';
+        try{await init(m.eps)}catch(err){if(!gw)throw err;await init(['wasm'])}
+        postMessage({t:'ready',gpu:G,pose:!!P})}catch(err){postMessage({t:'err',msg:String(err&&err.message||err)})}}
+    else{try{cfg=m.cfg;m.pose=!!P&&m.pose;const D=await detectFrame(m.bmp,m.bmp.width,m.bmp.height,m,run,g);postMessage({t:'res',id:m.id,D})}
+      catch(err){postMessage({t:'fail',id:m.id,msg:String(err&&err.message||err)})}
+      if(m.bmp.close)m.bmp.close()}}}
+const WSRC=()=>'var cfg,CLS='+JSON.stringify(CLS)+';const iou='+iou+';const inter='+inter+';\n'+[nms,decode,decodeP,tiles,place,merge,prep,detectFrame].map(String).join('\n')+'\n;('+WK+')()';
+async function initPool(){wk.forEach(w=>w.terminate());wk=[];
+  const url=URL.createObjectURL(new Blob([WSRC()],{type:'text/javascript'})),gp=!!($('#gpu').checked&&navigator.gpu);
+  const mkw=e=>new Promise((ok,no)=>{const w=new Worker(url),to=setTimeout(()=>no(new Error('таймаут загрузки модели')),18e4);w.q=0;
+    w.onmessage=ev=>{const m=ev.data;if(m.t=='ready'){clearTimeout(to);w.info=m;ok(w)}else if(m.t=='err'){clearTimeout(to);no(new Error(m.msg))}else if(RUN)RUN(w,m)};
+    w.onerror=ev=>{clearTimeout(to);no(new Error(ev.message||'ошибка фонового потока'))};
+    w.postMessage({t:'init',ort:OR+'ort.webgpu.min.js',ort2:OR+'ort.min.js',wp:OR,eps:e,det:new URL('models/yolov8n.onnx',location.href).href,pose:new URL('models/yolov8n-pose.onnx',location.href).href})});
+  const w0=await mkw(gp?['webgpu','wasm']:['wasm']);wk=[w0];
+  if(!w0.info.gpu){const n=Math.max(1,Math.min(4,(navigator.hardwareConcurrency||4)-1));wk.push(...await Promise.all(Array.from({length:n-1},()=>mkw(['wasm']))))}
+  return w0.info}
+async function boot(){st('Загрузка модели…');
+  try{const i=await initPool();st(`Модель загружена: ${i.gpu?'видеокарта (WebGPU)':wk.length+' фоновых потока(ов) процессора'}${i.pose?' + поза (yolov8n-pose)':'. Модели позы нет — события головы и рук отключены'}. Выберите видео.`,'ok')}
+  catch(e){wk.forEach(w=>w.terminate());wk=[];
+    try{await loadOrt();await initM(eps());st('Фоновые потоки не запустились ('+e.message+'): работаю в основном потоке, страница будет подвисать. Модель загружена'+(sessP?' + поза':', позы нет')+'.','warn')}
+    catch(e2){st('Не удалось загрузить models/yolov8n.onnx ('+e2.message+'). Откройте страницу через GitHub Pages или локальный сервер, а не как файл.','bad')}}
+  setB()}
+$('#gpu').onchange=boot;boot();
 </script></body></html>
